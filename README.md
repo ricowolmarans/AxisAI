@@ -105,7 +105,13 @@ URL to register, nothing extra to host.
 1. Azure Portal → App registrations → New registration.
 2. Platform: **Single-page application (SPA)** or **Web**, redirect URI:
    `https://your-site.netlify.app/ms-callback.html`
-3. API permissions: `Mail.Read`, `User.Read`, `offline_access`.
+3. API permissions: `Mail.Read`, `User.Read`, `offline_access`, `Chat.Read`,
+   `Chat.ReadWrite`, `ChannelMessage.Read.All`, `ChannelMessage.Send`,
+   `Team.ReadBasic.All`, `Channel.ReadBasic.All`. The Chat/Channel scopes
+   power Teams (list chats, list channel messages, send messages) —
+   `ChannelMessage.Read.All` may need admin consent depending on the tenant.
+   If Teams was connected before this was added, disconnect and reconnect
+   Microsoft so the token picks up the new scopes.
 4. Certificates & secrets → new client secret.
 5. Paste the Application (client) ID into `MS_CLIENT_ID` in
    `public/index.html`. Set `MS_CLIENT_ID`, `MS_CLIENT_SECRET`, and

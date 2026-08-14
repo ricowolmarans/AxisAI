@@ -33,7 +33,7 @@ exports.handler = async (event) => {
         code: body.code,
         grant_type: "authorization_code",
         redirect_uri: process.env.MS_REDIRECT_URI,
-        scope: "offline_access Mail.Read User.Read"
+        scope: "offline_access Mail.Read User.Read Chat.Read Chat.ReadWrite ChannelMessage.Read.All ChannelMessage.Send Team.ReadBasic.All Channel.ReadBasic.All"
       })
     });
     const tokenData = await tokenRes.json();

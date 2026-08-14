@@ -106,6 +106,26 @@ async function getNotionContext(tokens) {
   }
 }
 
+async function getTeamsContext(tokens) {
+  const t = tokens.microsoft;
+  if (!t?.refresh_token) return null;
+  try {
+    const accessToken = await getMicrosoftAccessToken(t.refresh_token);
+    const res = await fetch("https://graph.microsoft.com/v1.0/me/chats?$top=5&$orderby=lastUpdatedDateTime desc", {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    const data = await res.json();
+    // Missing-scope errors are common right after this feature ships — old
+    // tokens don't have Chat.Read yet. Surface that clearly instead of a
+    // generic Graph error so reconnecting is the obvious next step.
+    if (!res.ok) return `Teams: ${data.error?.message || "error fetching data"}${data.error?.code === "Authorization_RequestDenied" ? " (try reconnecting Microsoft — this needs a newer permission grant)" : ""}`;
+    const chats = (data.value || []).map(c => `- ${c.topic || c.chatType} (updated ${c.lastUpdatedDateTime})`);
+    return chats.length ? `Recent Teams chats:\n${chats.join("\n")}` : "Teams: no recent chats.";
+  } catch (e) {
+    return `Teams: error fetching data (${e.message}).`;
+  }
+}
+
 async function getOutlookContext(tokens) {
   const t = tokens.microsoft;
   if (!t?.refresh_token) return null;
@@ -148,6 +168,7 @@ exports.handler = async (event) => {
     getSlackContext(tokens),
     getGmailContext(tokens),
     getOutlookContext(tokens),
+    getTeamsContext(tokens),
     getGithubContext(tokens),
     getNotionContext(tokens)
   ])).filter(Boolean);

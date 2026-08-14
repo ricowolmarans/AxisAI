@@ -455,7 +455,7 @@ function connectMicrosoft(){
       response_type: 'code',
       redirect_uri: redirectUri,
       response_mode: 'query',
-      scope: 'offline_access Mail.Read User.Read',
+      scope: 'offline_access Mail.Read User.Read Chat.Read Chat.ReadWrite ChannelMessage.Read.All ChannelMessage.Send Team.ReadBasic.All Channel.ReadBasic.All',
       prompt: 'consent'
     });
     const popup = window.open(authUrl, 'msConnect', 'width=480,height=640');
@@ -753,6 +753,7 @@ document.getElementById('newChatBtn').addEventListener('click', async () => {
 });
 
 let attachedFiles = []; // [{id, filename, kind, summary, status}]
+let pendingUploads = []; // promises for any uploads/analysis currently in flight
 
 function renderAttachPreview(){
   const wrap = document.getElementById('attachPreview');
@@ -815,7 +816,10 @@ async function uploadOneFile(file){
 document.getElementById('attachBtn').addEventListener('click', () => document.getElementById('fileInput').click());
 document.getElementById('fileInput').addEventListener('change', (e) => {
   const files = Array.from(e.target.files || []);
-  files.forEach(uploadOneFile);
+  // Track each upload's promise so handleSend can wait for stragglers instead
+  // of silently dropping context from a file that hadn't finished yet — that
+  // was the bug where attaching + immediately hitting Send skipped the file.
+  files.forEach(f => pendingUploads.push(uploadOneFile(f)));
   e.target.value = ''; // allow re-selecting the same file later
 });
 
@@ -827,10 +831,22 @@ function buildFileContext(){
 
 async function handleSend(){
   const text = chatInput.value.trim();
-  const fileContext = buildFileContext();
-  if(!text && !fileContext) return;
+  if(!text && !attachedFiles.length) return;
   const modelId = document.getElementById('modelInput').value.trim();
   if(!modelId){ document.getElementById('modelInput').focus(); return; }
+
+  // Wait for any files still uploading/analyzing so their context actually
+  // makes it into this request — sending too early was silently dropping them.
+  if (pendingUploads.length) {
+    const sendBtn = document.getElementById('sendBtn');
+    const original = sendBtn.textContent;
+    sendBtn.disabled = true; sendBtn.textContent = 'Waiting for files...';
+    await Promise.all(pendingUploads);
+    pendingUploads = [];
+    sendBtn.disabled = false; sendBtn.textContent = original;
+  }
+
+  const fileContext = buildFileContext();
 
   // Lazily create a chat if the user typed straight from the greeting screen
   if (!currentChatId) {

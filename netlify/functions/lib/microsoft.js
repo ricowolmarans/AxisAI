@@ -9,7 +9,7 @@ async function getMicrosoftAccessToken(refreshToken) {
       client_secret: process.env.MS_CLIENT_SECRET,
       refresh_token: refreshToken,
       grant_type: "refresh_token",
-      scope: "offline_access Mail.Read User.Read"
+      scope: "offline_access Mail.Read User.Read Chat.Read Chat.ReadWrite ChannelMessage.Read.All ChannelMessage.Send Team.ReadBasic.All Channel.ReadBasic.All"
     })
   });
   const data = await res.json();
