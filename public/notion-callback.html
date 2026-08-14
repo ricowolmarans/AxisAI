@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><title>Connecting Notion...</title></head>
+<body style="background:#0a0a0a;color:#e6e6e6;font-family:monospace;display:flex;align-items:center;justify-content:center;height:100vh;">
+<p>Connecting... this window will close automatically.</p>
+<script>
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get('code');
+  const error = params.get('error_description') || params.get('error');
+  if (window.opener) {
+    window.opener.postMessage({ source: 'notion-oauth', code, error }, window.location.origin);
+  }
+  window.close();
+</script>
+</body>
+</html>

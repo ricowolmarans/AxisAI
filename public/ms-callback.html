@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><title>Connecting Microsoft...</title></head>
+<body style="background:#0a0a0a;color:#e6e6e6;font-family:monospace;display:flex;align-items:center;justify-content:center;height:100vh;">
+<p>Connecting... this window will close automatically.</p>
+<script>
+  // This page's ONLY job: grab the ?code= Microsoft sends back, hand it to
+  // the window that opened this popup, then close itself. Nothing here
+  // touches Supabase or any secret — the actual token exchange happens
+  // server-side in ms-oauth-exchange.js after the opener posts the code there.
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get('code');
+  const error = params.get('error_description') || params.get('error');
+  if (window.opener) {
+    window.opener.postMessage({ source: 'ms-oauth', code, error }, window.location.origin);
+  }
+  window.close();
+</script>
+</body>
+</html>

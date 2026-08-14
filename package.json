@@ -1,0 +1,16 @@
+{
+  "name": "axis-ai-netlify",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "node build-inject.js",
+    "dev": "netlify dev"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "adm-zip": "^0.5.10"
+  },
+  "devDependencies": {
+    "netlify-cli": "^17.0.0"
+  }
+}
