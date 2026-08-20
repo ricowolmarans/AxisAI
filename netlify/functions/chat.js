@@ -1,15 +1,37 @@
-// POST /api/chat  { messages: [{role, content}, ...], provider: "openrouter"|"groq", model: "..." }
+// POST /api/chat  { messages: [{role, content}, ...], provider: "openrouter"|"groq", model: "...", fileContext }
 // Header required: Authorization: Bearer <supabase access token>
 // Env vars required: OPENROUTER_API_KEY, GROQ_API_KEY
 //
-// Before asking the model anything, this pulls live context from whichever
-// of the user's integrations are configured (Canvas to-dos, Slack DM list,
-// recent Gmail subjects, recent Outlook subjects) and prepends it as a
-// system message. Any source that isn't set up or fails just gets skipped —
-// one bad source doesn't block the others or the chat itself.
+// Context is opt-in per message: a source only gets fetched if the latest
+// user message mentions a keyword for it (e.g. "canvas", "outlook"). This
+// used to fetch every configured integration on every single message
+// regardless of relevance — slow, and it meant the model's context window
+// was full of Canvas/Slack/Gmail noise even for "what's 2+2".
 const { supabaseAdmin, verifyUser } = require("./lib/supabaseAdmin");
 const { getGoogleAccessToken } = require("./lib/google");
 const { getMicrosoftAccessToken } = require("./lib/microsoft");
+
+// Keyword -> source mapping. First match wins per source; add synonyms here
+// rather than in the fetch functions themselves.
+const SOURCE_KEYWORDS = {
+  canvas: ["canvas"],
+  slack: ["slack"],
+  gmail: ["gmail", "email", "e-mail", "inbox"],
+  outlook: ["outlook"],
+  teams: ["teams", "microsoft teams", "ms teams"],
+  github: ["github", "git hub"],
+  notion: ["notion"]
+};
+
+function detectRequestedSources(messages) {
+  const lastUserMsg = [...messages].reverse().find(m => m.role === "user");
+  const text = (lastUserMsg?.content || "").toLowerCase();
+  const requested = new Set();
+  for (const [source, keywords] of Object.entries(SOURCE_KEYWORDS)) {
+    if (keywords.some(kw => text.includes(kw))) requested.add(source);
+  }
+  return requested;
+}
 
 async function getCanvasContext(tokens) {
   const t = tokens.canvas;
@@ -115,9 +137,6 @@ async function getTeamsContext(tokens) {
       headers: { Authorization: `Bearer ${accessToken}` }
     });
     const data = await res.json();
-    // Missing-scope errors are common right after this feature ships — old
-    // tokens don't have Chat.Read yet. Surface that clearly instead of a
-    // generic Graph error so reconnecting is the obvious next step.
     if (!res.ok) return `Teams: ${data.error?.message || "error fetching data"}${data.error?.code === "Authorization_RequestDenied" ? " (try reconnecting Microsoft — this needs a newer permission grant)" : ""}`;
     const chats = (data.value || []).map(c => `- ${c.topic || c.chatType} (updated ${c.lastUpdatedDateTime})`);
     return chats.length ? `Recent Teams chats:\n${chats.join("\n")}` : "Teams: no recent chats.";
@@ -153,25 +172,33 @@ exports.handler = async (event) => {
     return { statusCode: 400, body: JSON.stringify({ error: "messages (array) and model are required." }) };
   }
 
+  const requestedSources = detectRequestedSources(messages);
+
   let user, tokens = {};
   try {
     user = await verifyUser(event.headers.authorization);
-    const { data, error } = await supabaseAdmin.from("integration_tokens").select("*").eq("user_id", user.id);
-    if (error) throw new Error(error.message);
-    (data || []).forEach(row => { tokens[row.service] = row; });
+    if (requestedSources.size > 0) {
+      const { data, error } = await supabaseAdmin.from("integration_tokens").select("*").eq("user_id", user.id);
+      if (error) throw new Error(error.message);
+      (data || []).forEach(row => { tokens[row.service] = row; });
+    }
   } catch (e) {
     return { statusCode: 401, body: JSON.stringify({ error: e.message }) };
   }
 
-  const contextPieces = (await Promise.all([
-    getCanvasContext(tokens),
-    getSlackContext(tokens),
-    getGmailContext(tokens),
-    getOutlookContext(tokens),
-    getTeamsContext(tokens),
-    getGithubContext(tokens),
-    getNotionContext(tokens)
-  ])).filter(Boolean);
+  const sourceFetchers = {
+    canvas: () => getCanvasContext(tokens),
+    slack: () => getSlackContext(tokens),
+    gmail: () => getGmailContext(tokens),
+    outlook: () => getOutlookContext(tokens),
+    teams: () => getTeamsContext(tokens),
+    github: () => getGithubContext(tokens),
+    notion: () => getNotionContext(tokens)
+  };
+
+  const contextPieces = (await Promise.all(
+    [...requestedSources].map(source => sourceFetchers[source]())
+  )).filter(Boolean);
 
   // fileContext is a plain string the frontend builds from any files
   // attached to this message (zip listings, text previews, image
@@ -201,9 +228,6 @@ exports.handler = async (event) => {
     });
     const data = await res.json();
 
-    // Persist both sides of the exchange — brief also requires user + AI
-    // messages saved to Supabase, which the frontend's chat.js already does
-    // for the chat/messages tables; this endpoint just returns the reply.
     return {
       statusCode: res.status,
       headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
