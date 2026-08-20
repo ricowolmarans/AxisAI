@@ -1,3 +1,4 @@
+
 // Runs as Netlify's build command (see netlify.toml). Takes
 // index.template.html, swaps the __SUPABASE_URL__ / __SUPABASE_ANON_KEY__
 // tokens for the real values from Netlify's env vars, and writes the
