@@ -247,10 +247,39 @@
 
   // ---- Wire this to your real backend call ----
   // Replace this stub with the actual fetch() to your chat function/Worker.
-  async function sendToAxis(message){
-    // TODO: fetch('/.netlify/functions/chat', {...}) or your new Worker endpoint
-    return "Got it — working on: " + message;
+  async function sendToAxis(messageText){
+  const supabaseToken = session?.access_token;
+  if (!supabaseToken) return "You're not logged in.";
+
+  const conversation = chatHistory.find(c => c.id === currentChatId);
+  const priorMessages = conversation ? conversation.messages : [];
+  const outbound = [...priorMessages, { role: "user", content: messageText }];
+
+  try {
+    const res = await fetch("/.netlify/functions/chat", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + supabaseToken
+      },
+      body: JSON.stringify({
+        messages: outbound,
+        provider: "groq",
+        model: "llama-3.3-70b-versatile"
+      })
+    });
+    const data = await res.json();
+
+    if (conversation){
+      conversation.messages.push({ role: "user", content: messageText });
+      conversation.messages.push({ role: "assistant", content: data.reply || "" });
+    }
+
+    return data.reply || data.error || "Something went wrong.";
+  } catch (e) {
+    return "Couldn't reach Axis: " + e.message;
   }
+}
 
   async function handleSend(){
     const text = chatInput.value.trim();
